@@ -17,7 +17,10 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0
-          persist-credentials: false
+          # Claude's PR discovery fetches the head branch after checkout. Keep
+          # the existing workflow token available to git for that read; its
+          # permissions above allow contents:read and PR comments only.
+          persist-credentials: true
 
       - uses: anthropics/claude-code-action@70fec183852c4f82f3f1969faed7dd60c5149ca7 # v1
         with:

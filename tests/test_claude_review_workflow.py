@@ -32,6 +32,14 @@ class ClaudeReviewCompatibilityTests(unittest.TestCase):
         self.assertNotIn("uses: actions/checkout@v5", text)
         self.assertNotIn("uses: actions/checkout@v4", text)
 
+    def test_pr_discovery_fetch_uses_the_read_only_workflow_token(self):
+        """Claude's head-branch fetch needs checkout's persisted auth."""
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("persist-credentials: true", text)
+        self.assertRegex(text, r"(?m)^  contents: read$")
+        self.assertRegex(text, r"(?m)^  pull-requests: write$")
+        self.assertNotRegex(text, r"(?m)^\s+contents: write$")
+
     def test_reusable_workflow_pins_claude_action(self):
         """A secret-bearing review action must use an immutable commit."""
         text = WORKFLOW.read_text(encoding="utf-8")
