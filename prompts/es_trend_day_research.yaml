@@ -1,0 +1,364 @@
+# ES trend-day research prompt
+# Use: paste this whole file as the prompt into a research-capable session (web search on),
+#      or load it with a prompt loader. Edit the prompt here, never inside scripts.
+# ASCII only on purpose: safe to read with any default file encoding.
+# seed_sources were written from memory; the prompt tells the researcher to verify them.
+
+name: es_trend_day_research
+version: 1
+created_et: "2026-09-28T14:41:57-04:00"
+description: >-
+  Research how to CLASSIFY and how to PREDICT E-mini S&P 500 (ES) trend days, with
+  no-look-ahead validation and e-ratio evaluation, built around my MI feeds.
+
+role: >-
+  You are a senior quantitative researcher in US index-futures intraday market structure
+  (auction / market-profile theory, volatility, microstructure, statistical validation).
+  You are skeptical of trading folklore: every claim needs evidence or an explicit
+  "untested" tag.
+
+objective: |
+  Give me an implementable, look-ahead-free framework that does two things for ES
+  regular-trading-hours (RTH) sessions (NQ, MI and equities are used as predictors):
+  1. CLASSIFY: define what a trend day is, name the subtypes, and label every session
+     mechanically. Provide a ground-truth label (built on the full session) and a
+     progressive version that uses only what is knowable at each decision time.
+  2. PREDICT: estimate P(trend day) and its direction at fixed decision times from the
+     pre-open to early afternoon. Say how early each signal becomes reliable and how much
+     of the day's move is still left when it fires.
+  The output feeds a scoring model (shown as bar charts) that gates trend-following
+  triggers, so actionable beats academic. If effort is limited, cover M2-M5 in full and
+  M1 and M6 briefly.
+
+my_context:
+  - I build intraday scoring and trading models for ES and enforce strict no-look-ahead discipline.
+  - >-
+    Data I can supply (IQFeed): ES and NQ intraday bars, MI (TICK, ADD, VOLD, VOLDQ), Mag7
+    stocks, SPY / QQQ / IWM, and daily news. For anything else you recommend (VIX complex,
+    options / gamma, tick or L2 order flow, cross-asset, economic calendar) tag it essential
+    or optional and name the exact fields needed.
+  - I implement in Python run with `uv run`, with thresholds and calendars in YAML.
+  - >-
+    Unless data is explicitly attached in this conversation, you do not have my data. Do not
+    invent empirical results. Where a number is not available from a verifiable source,
+    specify the exact test to run on my data (label, feature, decision time, metric, required
+    sample size) instead.
+  - Do not ask me questions. List your assumptions in an "Assumptions" section and proceed.
+
+glossary:
+  ES: "E-mini S&P 500 futures"
+  SP: "S&P 500 (index / cash)"
+  NQ: "Nasdaq (E-mini Nasdaq-100 futures)"
+  MI: "Market internals: TICK, ADD, VOLD, VOLDQ. Write MI, not the long form."
+  TICK: "Upticking minus downticking issues"
+  ADD: "Advancing minus declining issues"
+  VOLD: "VINA - VIND"
+  VOLDQ: "VI5A.Z - VI5D.Z"
+  IS: >-
+    Initial Support. Write IS, not the long form. My exact definition is not supplied here:
+    if you use IS or IR, state the definition you assume (for example opening-range or IB
+    extremes) and flag it so I can swap in mine.
+  IR: "Initial Resistance. Write IR, not the long form. See IS."
+  RTH: "09:30-16:00 ET (America/New_York, DST-aware)"
+  IB: "Initial balance. Test both the first 30 and the first 60 minutes."
+  ATR: "Trailing average true range of RTH sessions (state the window; default 20)"
+
+global_rules:
+  no_look_ahead: >-
+    Ground-truth LABELS may use the whole session. PREDICTORS may only use data time-stamped
+    at or before the decision time. Never design, tune or filter a rule by looking at what
+    happens after a trigger. Thresholds must come from theory or literature, or from a
+    training window with a sealed out-of-sample period. Log every variant tried and correct
+    for multiple testing.
+  session: >-
+    Labels are RTH-only (09:30-16:00 ET). Overnight (Globex) information may be a predictor
+    only if it is fully known by the decision time. Every event built from ADD, TICK, Mag7
+    stocks, SPY, QQQ or IWM is limited to RTH.
+  exclusions: >-
+    Unless I say otherwise, exclude FOMC announcement days, US market holidays and half
+    (early-close) days from ALL analysis, and name your calendar source. Other event days
+    (CPI, NFP, PPI, retail sales, OPEX / quad witching, month / quarter end, Mag7 earnings)
+    are NOT excluded: treat them as covariates.
+  terminology: >-
+    Write SP, NQ, IS, IR and MI (not the long forms). VOLD = VINA - VIND.
+    VOLDQ = VI5A.Z - VI5D.Z.
+  percentile_ranks: >-
+    For signed features rank positives only against positives and negatives only against
+    negatives; the more negative the value, the higher its percentile rank.
+  strategy_evaluation: >-
+    Use e-ratio (average MFE / average MAE from entry over a stated horizon, both in % of
+    entry price). Cap MAE at 0.02% unless I say otherwise: treat 0.02% as the stop, so once
+    it is reached the trigger ends and MFE stops accumulating. Every results table shows the
+    number of trades / triggers next to e-ratio, MFE and MAE. Whenever you name an "optimal"
+    strategy, state its number of trades.
+  charts: >-
+    Candlesticks for price and for TICK. Bar charts for scoring models. Any chart of a
+    specific day includes that day's news.
+  code_and_config: >-
+    Python runs via `uv run`. Every script prints its elapsed time as its last output. All
+    thresholds, symbol lists, time windows, calendars and prompts live in YAML, never
+    hard-coded.
+  formatting: >-
+    Report in Markdown. If you produce a PDF or Word file, stamp the exact date and time
+    (with time zone) on it. Deliver fewer than 6 files individually, not zipped.
+
+decision_times_et:
+  pre_open: "09:25"
+  open_5: "09:35"
+  open_15: "09:45"
+  open_30: "10:00"
+  ib_60: "10:30"
+  late_morning: "11:00"
+  noon: "12:00"
+  early_pm: "13:30"
+  rule: >-
+    Adjust or add times only if the evidence says so, and keep the set small and fixed in
+    advance. For each time list exactly what is known: prior sessions, overnight, 08:30
+    releases, RTH bars to date.
+
+research_modules:
+  - id: M1
+    title: Definitions and evidence base
+    tasks:
+      - >-
+        Survey how practitioners and academics define and name trend days: Dalton and
+        Steidlmayer day types and open types (open-drive, open-test-drive,
+        open-rejection-reverse, open-auction), Brooks (trend from the open, spike-and-channel,
+        small-pullback trend, trending range), Crabel (opening range, NR4 / NR7), Raschke,
+        Fisher (ACD), the intraday-momentum literature, and quantitative proxies (efficiency
+        ratio, variance ratio, one-time framing, path efficiency).
+      - >-
+        Grade every source: peer-reviewed / working paper / practitioner book / blog or forum.
+    output: >-
+      Table: source | definition | mechanically computable? | ex-post only or observable
+      progressively? | claimed base rate | evidence grade.
+
+  - id: M2
+    title: Classification - ground-truth labels, subtypes, progressive version
+    tasks:
+      - >-
+        Propose a mechanical ex-post label for ES RTH sessions built from a few roughly
+        orthogonal metrics. Candidates (choose and justify, add better ones): directional
+        efficiency |C-O| / (H-L); path efficiency |C-O| / sum of |1-min changes|; range vs
+        trailing ATR (and vs implied move if available); close and open location within the
+        day's range; maximum retracement as a share of range; one-time-framing persistence on
+        30-min periods; share of time on one side of session VWAP and number of VWAP crosses;
+        time of the day's high and low; profile shape (single vs double distribution, POC
+        migration).
+      - >-
+        Justify thresholds a priori (source or logic), never by tuning on outcomes. Give
+        strict / standard / loose tiers and report the base rate each produces. Label direction
+        (up / down) and handle sessions that trend and then reverse.
+      - >-
+        Define subtypes with rules, frequency, the time each becomes identifiable, typical
+        follow-through, and what separates it from look-alikes early in the day. At minimum:
+        open-drive trend, IB-breakout trend, double-distribution trend, late-day trend,
+        trend-then-reversal (failed trend), gap-and-go, spike-and-channel, small-pullback
+        trend, reversal / V day, and the non-trend classes (balanced / range, inside, neutral).
+      - >-
+        Give a progressive version of every rule: what the classification can and cannot say
+        at each decision time.
+      - >-
+        Cross-check with unsupervised methods (k-means / GMM / HMM / DTW / functional PCA on
+        normalized intraday paths): agreement with the rule-based labels (ARI / NMI),
+        stability across years and volatility regimes, and whether clusters should replace or
+        only audit the rules.
+      - >-
+        Base rates and persistence: frequency by definition, direction, year, volatility
+        regime and day of week; clustering of trend days; what tends to follow a trend day.
+    output: >-
+      Taxonomy as YAML (labels.yaml: metrics, formulas, thresholds, tiers, subtype rules,
+      identifiable_from time) plus a summary table.
+
+  - id: M3
+    title: Prediction - features by decision time
+    tasks:
+      - >-
+        Build a feature catalog. For each feature give: family, exact formula with edge cases,
+        earliest decision time at which it is available, expected sign, evidence grade, data
+        needed, and leakage risk. Drop any family with no credible evidence and say so.
+      - >-
+        Quantify, or design the test for, incremental value: MI vs price / volume alone at
+        each decision time (ablation); NQ / Mag7 / IWM confirmation vs SP alone; and each
+        family vs the simplest baseline (for example IB range / ATR).
+    families:
+      prior_session: >-
+        Range percentile, NR4 / NR7, inside / outside day, close location, value-area
+        relationship, multi-day balance length and breakout, poor highs / lows, single prints,
+        p / b profile shapes and 45-degree-line days (Shadow Trader style), prior day type.
+      overnight: >-
+        Gap size in ATR units, gap vs prior range and value area, overnight range and
+        inventory, overnight volume vs norm, overnight NQ vs ES behavior.
+      opening: >-
+        Open type, opening-range size and volume vs norm, first-N-minute directional
+        efficiency, break of prior-day extremes, IS / IR break and hold (under your stated
+        definition).
+      initial_balance: >-
+        IB range vs ATR, extension timing and hold, one-time framing, VWAP slope and distance,
+        POC location and migration, cumulative volume vs same-time average, variance ratio and
+        autocorrelation of short-horizon returns.
+      mi: >-
+        Levels, slopes, persistence, extreme counts, thrusts and divergences of TICK, ADD,
+        VOLD and VOLDQ, using sign-conditional percentile ranks.
+      cross_market: >-
+        NQ vs ES relative strength and lead-lag, SPY / QQQ / IWM participation, Mag7
+        participation and concentration.
+      volatility_options: >-
+        VIX level and term structure, VIX1D, implied move already consumed, dealer gamma /
+        0DTE positioning (with an honest note on model risk).
+      calendar: >-
+        Scheduled releases, OPEX, month / quarter end, Mag7 earnings, day of week,
+        seasonality.
+      cross_asset: >-
+        Rates, USD, crude, overnight Europe / Asia behavior.
+      order_flow_optional: >-
+        Tick / L2 only: delta, sweeps, absorption, order-flow imbalance.
+    output: >-
+      Feature catalog as YAML (features.yaml) plus a ranked shortlist.
+
+  - id: M4
+    title: Modeling and validation without data snooping
+    tasks:
+      - >-
+        Baselines: unconditional base rate, IB range / ATR, opening range vs ATR, and a simple
+        gap + MI rule. Then candidate models suited to a small number of trend days
+        (regularized logistic, monotone gradient boosting, Bayesian sequential updating from
+        the pre-open prior to each decision time, HMM / regime models). Prefer interpretable
+        and well calibrated over marginally more accurate.
+      - >-
+        Protocol: sealed final holdout touched once; walk-forward with purging and embargo;
+        nested CV for any hyperparameter; block-bootstrap confidence intervals;
+        multiple-testing control across every variant tried (Holm / BH-FDR, reality check /
+        SPA, deflated Sharpe where relevant); power analysis (how many trend days are needed
+        to detect the claimed lift); splits by regime, including before / after daily 0DTE
+        SPX expirations (2022) and by volatility level.
+      - >-
+        Metrics at each decision time: PR-AUC, Brier score / log-loss, calibration curve, lift
+        by probability decile, and performance by year.
+      - >-
+        Propose how to express the model as a transparent score for bar-chart display:
+        components on sign-conditional percentile scales, weights or points, and the mapping
+        to a calibrated probability.
+      - >-
+        Provide a pre-registration checklist to fill in before the holdout is opened:
+        hypotheses, features, thresholds, label tier, decision times, metrics, success
+        criteria.
+    output: >-
+      Validation protocol as YAML (validation.yaml) plus the pre-registration checklist.
+
+  - id: M5
+    title: Actionability - latency, remaining move, trigger evaluation
+    tasks:
+      - >-
+        For each decision time and probability tier: hit rate, detection latency, and remaining
+        move (MFE from the decision time to the close, as a share of session range and in ATR
+        units). A classifier that only fires after most of the move is done has little value;
+        say so where that applies.
+      - >-
+        Design out-of-sample trigger tests for trend-following entries conditioned on the
+        classifier (IB breakout, IS / IR break-and-hold, pullback to VWAP, opening-drive
+        continuation), including a meta-labeling variant (primary trigger filtered by
+        trend-day probability). Compare each against the same trigger without the filter.
+      - >-
+        Cost of errors: what a false positive costs a trend-follower vs a fader, and the
+        asymmetry between up and down trend days.
+    output: >-
+      Tables with number of trades / triggers, e-ratio, MFE, MAE (MAE cap 0.02%), and the
+      optimal strategy with its number of trades. If no data is attached, specify the tests
+      instead of reporting results.
+
+  - id: M6
+    title: Robustness, data hygiene and rules of thumb
+    tasks:
+      - >-
+        Data hygiene: ES contract rolls (compute gaps and prior close from the same contract),
+        DST, RTH boundaries, missing bars, IQFeed quirks for the MI symbols, time-of-day
+        seasonality (U-shaped volume and volatility) in every threshold, overlapping or
+        serially dependent samples, label-feature leakage (for example the day's high / low
+        used in both), threshold hunting, and hindsight in anecdotes.
+      - >-
+        Excluded days: drop them as sample days, state how trailing windows (ATR, volume
+        baselines, percentile ranks) treat them (default: exclude them there too), and never
+        bridge them in day-after or clustering analysis.
+      - >-
+        Structural change: daily 0DTE SPX expirations (2022), retail options flow,
+        leveraged-ETF rebalancing, Mag7 index concentration, volatility regimes. Say which
+        findings are likely to decay.
+      - >-
+        Rules of thumb - label each supported / contradicted / untested: narrow IB means trend
+        day; TICK does not print negative extremes on up-trend days; gap-and-go; first 30-minute
+        direction predicts the rest of the day; trend days follow compression; the day after a
+        trend day is a balance day.
+
+  - id: M7
+    title: Synthesis
+    tasks:
+      - >-
+        Recommend a minimum viable model (8 features or fewer) and an extended model, with the
+        earliest decision time at which each is reliable.
+      - >-
+        Give a one-page cheat sheet per decision time: the 3-5 checks that most change
+        P(trend), with direction of effect (magnitudes only if evidence-backed).
+      - >-
+        Give a ranked backlog of the 10 highest-value experiments for my data: hypothesis,
+        label tier, features, decision time, test, success criterion, power, data required,
+        effort.
+
+seed_sources:
+  note: >-
+    Starting points from memory, not exhaustive. Verify each, drop what you cannot confirm,
+    add better ones. Search for 2023-2026 work, especially 0DTE / dealer gamma and intraday
+    momentum.
+  items:
+    - >-
+      Dalton, Jones and Dalton, Mind Over Markets; Dalton, Markets in Profile;
+      Steidlmayer, Steidlmayer on Markets
+    - Crabel, Day Trading with Short-Term Price Patterns and Opening Range Breakout (1990)
+    - Brooks, Trading Price Action Trends (2012)
+    - Kaufman, efficiency ratio (KAMA)
+    - Gao, Han, Li and Zhou (2018), Market intraday momentum, Journal of Financial Economics
+    - >-
+      Baltussen, Da, Lammers and Martens (2021), Hedging demand and market intraday momentum,
+      Journal of Financial Economics
+    - >-
+      Zarattini, Aziz and Barbon (2024), Beat the Market - An Effective Intraday Momentum
+      Strategy for S&P500 ETF (SPY), SSRN
+    - Andersen and Bollerslev (1997), Intraday periodicity and volatility persistence in financial markets
+    - Lo and MacKinlay (1988), Stock market prices do not follow random walks (variance ratio)
+    - Lopez de Prado (2018), Advances in Financial Machine Learning (purged CV, embargo, meta-labeling)
+    - >-
+      Bailey and Lopez de Prado (2014), The Deflated Sharpe Ratio; White (2000) Reality Check;
+      Hansen (2005) SPA; Harvey, Liu and Zhu (2016)
+    - Cont, Kukanov and Stoikov (2014), The price impact of order book events
+
+quality_bar:
+  - >-
+    Every quantitative claim cites a source (author, year, DOI or URL) or is tagged
+    "estimate" or "unverified". Never invent citations or statistics.
+  - >-
+    Separate evidence from folklore. Give a confidence level (high / medium / low) for each
+    conclusion.
+  - State today's date and the date range of your sources.
+  - >-
+    Prefer methods one developer can implement with pandas or polars and YAML configs. Give
+    formulas and edge cases, not full pipelines, unless I ask.
+  - No generic trading advice and no padding. Tables and YAML specs over prose.
+
+output_format:
+  sections:
+    - >-
+      Executive summary (max 1 page): definitions adopted, best-supported predictors, earliest
+      reliable decision time, biggest uncertainties
+    - Assumptions
+    - Evidence table (M1)
+    - Taxonomy and labels.yaml (M2)
+    - Feature catalog and features.yaml (M3)
+    - Validation protocol and validation.yaml (M4)
+    - Actionability tests (M5)
+    - Robustness and rules of thumb (M6)
+    - Minimum viable model, cheat sheets and ranked experiment backlog (M7)
+    - References with links; flag anything unverified
+  files: >-
+    labels.yaml, features.yaml and validation.yaml as separate code blocks I can save as-is.
+  length: >-
+    Prose capped near 3,000 words excluding tables and YAML. Lead with conclusions.
