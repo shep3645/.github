@@ -2,7 +2,7 @@
 
 ## 2026-09-28
 
-- `prompts/es_trend_day_research.yaml` — Add a research prompt for classifying and predicting ES trend days (ground-truth labels and subtypes, decision-time features including an MI ablation, no-look-ahead validation, e-ratio trigger evaluation).
+- `prompts/es_trend_day_research.yaml` — Add a staged research prompt for classifying, recognizing and predicting ES trend days (axis-based labels, remaining-move targets and baselines, decision-time features including an MI ablation, no-look-ahead validation with a hypothesis budget, e-ratio and fade-veto tests).
 
 ## 2026-08-27
 
