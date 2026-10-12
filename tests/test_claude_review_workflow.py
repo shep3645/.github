@@ -71,6 +71,30 @@ class ClaudeReviewCompatibilityTests(unittest.TestCase):
 
 
 
+class ClaudeAuthTests(unittest.TestCase):
+    def test_both_auth_secrets_are_optional(self):
+        """Callers pass the OAuth token, the API key, or both."""
+        text = WORKFLOW.read_text(encoding="utf-8")
+        for name in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"):
+            block = re.search(rf"(?m)^      {name}:\n        required: (\w+)$", text)
+            self.assertIsNotNone(block, name)
+            self.assertEqual(block.group(1), "false", name)
+
+    def test_oauth_token_is_passed_and_wins_over_the_api_key(self):
+        """Claude Code prefers ANTHROPIC_API_KEY; withhold it when a token is set."""
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertRegex(
+            text,
+            r"(?m)^\s+claude_code_oauth_token: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN \}\}$",
+        )
+        self.assertRegex(
+            text,
+            r"(?m)^\s+anthropic_api_key: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN == '' "
+            r"&& secrets\.ANTHROPIC_API_KEY \|\| '' \}\}$",
+        )
+        self.assertNotRegex(text, r"(?m)^\s+anthropic_api_key: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}$")
+
+
 def explain_script() -> str:
     """The `run:` body of the failure-explanation step, as the runner sees it."""
     text = WORKFLOW.read_text(encoding="utf-8")

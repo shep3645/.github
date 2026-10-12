@@ -3,8 +3,14 @@ name: Claude Code Review
 on:
   workflow_call:
     secrets:
+      # Pass one. The subscription OAuth token (`claude setup-token`) is
+      # preferred: when it is set the API key is not handed to the action at
+      # all, because Claude Code lets ANTHROPIC_API_KEY win over the token and
+      # a stale key then fails every run ("Invalid API key", 2026-10-12).
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: false
       ANTHROPIC_API_KEY:
-        required: true
+        required: false
 
 permissions:
   contents: read
@@ -29,7 +35,8 @@ jobs:
           # with long-lived caller branches that predate id-token: write while
           # retaining the least privileges required for review comments.
           github_token: ${{ github.token }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN == '' && secrets.ANTHROPIC_API_KEY || '' }}
 
       # The action hides Claude's output (show_full_output stays off: it prints the
       # whole transcript, tool results included). Without it a failed run says only
