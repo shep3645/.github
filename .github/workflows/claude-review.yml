@@ -30,3 +30,30 @@ jobs:
           # retaining the least privileges required for review comments.
           github_token: ${{ github.token }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      # The action hides Claude's output (show_full_output stays off: it prints the
+      # whole transcript, tool results included). Without it a failed run says only
+      # "result is_error:true", which is all the 2026-09-14 and 2026-10-12 utils
+      # reviews left behind. On failure, print the init model and the result
+      # record (the API error text lives there) and nothing else from the run.
+      - name: Explain a failed Claude run
+        if: failure()
+        env:
+          EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
+        run: |
+          if [ ! -s "$EXECUTION_FILE" ]; then
+            echo "No Claude execution file at $EXECUTION_FILE: the run failed before Claude started."
+            exit 0
+          fi
+          # The result text is not ours to trust; keep it from being read as a workflow command.
+          stop="claude-explain-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+          echo "::stop-commands::$stop"
+          jq -r '
+            (.[] | select(.type == "system" and .subtype == "init")
+              | "init: model=\(.model // "?") apiKeySource=\(.apiKeySource // "?")"),
+            (.[] | select(.type == "result")
+              | "result: subtype=\(.subtype) is_error=\(.is_error) turns=\(.num_turns) duration_ms=\(.duration_ms) cost_usd=\(.total_cost_usd)",
+                "result text: \((.result // "") | tostring | gsub("[\r\n]+"; " ") | .[0:600])",
+                (if .errors then "errors: \(.errors | map(tostring) | join("; ") | gsub("[\r\n]+"; " ") | .[0:600])" else empty end))
+          ' "$EXECUTION_FILE" || echo "Could not read $EXECUTION_FILE as Claude SDK messages."
+          echo "::$stop::"
