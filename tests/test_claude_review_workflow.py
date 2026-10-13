@@ -46,6 +46,27 @@ class ClaudeReviewCompatibilityTests(unittest.TestCase):
         self.assertRegex(text, r"(?m)^  pull-requests: write$")
         self.assertNotRegex(text, r"(?m)^\s+contents: write$")
 
+    def test_action_stays_in_tag_mode(self):
+        """No prompt and no track_progress: the callers depend on tag mode.
+
+        With neither input, claude-code-action v1 acts only on comment events that mention
+        @claude (tag mode); a pull_request event falls through to agent mode and skips with
+        "No trigger found". On 2026-10-13 the callers in shep3645/code, utils and argus
+        dropped their pull_request triggers and gate the job on an @claude PR comment
+        (code#1722, utils#3124, argus#180), because the PR-event runs were billed minutes
+        that never reviewed. Adding a prompt (agent mode) or track_progress here would make
+        those callers silently stop auto-reviewing PRs, so change them together (bd code-2hao24).
+        """
+        text = WORKFLOW.read_text(encoding="utf-8")
+        step = re.search(
+            r"(?ms)^\s+- uses: anthropics/claude-code-action@[^\n]*\n(?P<body>.*?)(?=^\s+- (?:uses|name|run):|\Z)",
+            text,
+        )
+        self.assertIsNotNone(step, "claude-code-action step not found")
+        body = step.group("body")
+        self.assertNotRegex(body, r"(?m)^\s+prompt:")
+        self.assertNotRegex(body, r"(?m)^\s+track_progress:")
+
     def test_reusable_workflow_pins_claude_action(self):
         """A secret-bearing review action must use an immutable commit."""
         text = WORKFLOW.read_text(encoding="utf-8")
